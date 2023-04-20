@@ -116,6 +116,7 @@ def contentBasedRecommender():
   # Queremos que el primer valor sea el índice de la pelicula, y el segundo valor el título de la pelicula
   returnMoviesRequest = dict(zip(moviesWeight.index[:NUM_PREDICTION_REQUEST], moviesWeight['movie_title'][:NUM_PREDICTION_REQUEST]))
 
+  #formato del resultado: {ordernPrioridad: 'titulo de pelicula'...}
   # Devolvemos el resultado
   return returnMoviesRequest
 
@@ -171,6 +172,7 @@ def colaborativeFilterRecommender():
   # userBasedAlgo.predict(uid=str(USER), iid=str(302), r_ui=4, verbose=True)
 
   # Realizamos una validacion cruzada para obtener la evaluación del algoritmo
+  print('Algorithm evaluation\n-----------------------------')
   cross_validate(userBasedAlgo, data, measures=['RMSE', 'MAE', 'FCP', 'MSE'], cv=5, verbose=True)
 
   # Filtramos los items del subcojnunto de entrenamiento, para obtener solo aquellas peliculas que el usuario no valorado
@@ -192,7 +194,7 @@ def colaborativeFilterRecommender():
   
   # Iteramos sobre los items de la lista ordenada de predicciones para obtener un número asignado de items
   # Damos formato para devolver un resultado más legible
-  # Formato de la lista: {nºPrioridad: {'title': 'titulo de la pelicula', 'est': 'valoración estimada de la pelicula}}
+  # Formato de la lista: {ordenPrioridad: {'title': 'titulo de la pelicula', 'est': 'valoración estimada de la pelicula}}
   sortedPredictionDict = {}
   for i, (title, est) in enumerate(sortedPredictionList, start=1):
     if i > NUM_PREDICTION_REQUEST : break
@@ -200,7 +202,6 @@ def colaborativeFilterRecommender():
 
 
   # Devolvemos las peliculas
-  print(type(sortedPredictionDict))
   return sortedPredictionDict
 
   #########################
