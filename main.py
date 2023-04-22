@@ -6,37 +6,31 @@ import os
 from surprise import Dataset, Reader, accuracy, KNNWithMeans, SVD
 from surprise.model_selection import train_test_split, cross_validate, GridSearchCV
 
-# La idea es unir en éste fichero las tres tareas en tres funciones distintas
+# La idea es unir en este fichero las tres tareas en tres funciones distintas
+
+USER = 123 # Usuario al que vamos a dirigir la recomendación 
+NUM_PREDICTION_REQUEST = 10 # Número de peliculas que queremos que devuelva la función
+MIN_RATING_PRECISION = 4 # Rating minímo de la recomendación
 
 def itemIdToName(iid):
   df = pd.read_csv('./ml-100k/u.item', usecols=[0, 1], sep='|', names=['item_id', 'item_title'])
   title = df.loc[df['item_id'] == iid, 'item_title'].iloc[0]
   return title
 
-def contentBasedRecommender():
-  # Obtenemos los identificadores de los usuarios, las peliculas y el rating de cada uno
-  usersColumnNames = ['user_id', 'movie_id', 'rating']
-  usersDf = pd.read_csv('./ml-100k/u.data', usecols=[0, 1, 2], sep='\t', names=usersColumnNames)
+def getDatasetFromMovielens():
+  # Ruta del fichero donde se almacenan los datos requeridos
+  file_path = os.path.expanduser('./ml-100k/u.data')
 
-  # Filtramos para recoger solo las peliculas que el usuario haya visto
-  userDf = usersDf.query(f'user_id == {USER}').drop('user_id', axis='columns')
+  # Instancia de la clase Reader para poder cargar los datos de manera que el metodo load_from_file pueda procesarlos
+  reader = Reader(line_format="user item rating timestamp", sep="\t")
 
-  # Obtenemos los datos de generos disponibles
-  moviesGenresColumnNames = ['genre_name', 'genre_id']
-  movieGenres = pd.read_csv('./ml-100k/u.genre', usecols=[0], sep='|', names=moviesGenresColumnNames)
+  # Almacenamos los datos del fichero como un dataset de surprise
+  data = Dataset.load_from_file(file_path, reader=reader)
 
-  # Obtenemos el nombre de las columnas que tendrá la matriz de peliculas
-  moviesColumnNames = pd.concat([pd.Series(['movie_id', 'movie_title']), movieGenres['genre_name']])
+  # Devolvemos el dataset
+  return data
 
-  # Obtenemos los datos de las peliculas
-  # id, title, genders (los generos están en asignados en columnas por el método One Hot encoder, donde cada columna indica si tiene ese género (1) o no (0))
-  moviesDf = pd.read_csv('./ml-100k/u.item', usecols=[0, 1, *range(5, 24)], sep='|', names=moviesColumnNames)
-
-  # Filtramos las peliculas para obtener solo aquellas que haya visto el usuario asignado
-  moviesWatchedByUser = moviesDf[moviesDf.iloc[:, 0].isin(userDf['movie_id'])]
-
-  # Comprobamos si el tamaño es el mismo, para asegurarnos que no hay repeticiones
-  # print(len(userDf) == len(moviesWatchedByUser))
+def contentBasedAlgorithm(returnOnlyIdAndScore = False, userDf= '', moviesDf='', moviesWatchedByUser= '', movieGenres= ''):
 
   # Unimos los dos dataframes según el id de la pelicula
   entryUserCalification = pd.merge(userDf, moviesWatchedByUser, on='movie_id')
@@ -53,9 +47,6 @@ def contentBasedRecommender():
 
     weightMatrix.loc[len(weightMatrix)] = rowToInsertInMatrix
 
-  # Comprobamos que siguen siendo la misma cantidad de peliculas
-  # print(len(userDf) == len(weightMatrix))
-
   # Una vez tenemos la matriz de peso, creamos el perfil de usuario, que nos dirá a que género es más afin
   # Para ello, primero sumamos los valores de cada una de las columnas
   userProfile = pd.DataFrame(columns=[*movieGenres['genre_name']])
@@ -69,18 +60,10 @@ def contentBasedRecommender():
   for col in userProfile.columns:
       userProfile[col] = userProfile[col] / totalColumnValue
 
-  # Comprobamos que el total de todas las columnas da 1
-  # Debe devolver True
-  # print(userProfile.iloc[0].sum() == 1)
-
   # Finalmente, una vez tenemos el perfil de usuario, filtramos aquellas peliculas que ya ha visto el usuario
   # De manera que solo tengamos en cuenta aquellas que no ha visto, estas serán las peliculas candidatas a recomendar
   maskForRemoveMoviesWatched = moviesDf['movie_id'].isin(moviesWatchedByUser['movie_id'])
   candidateMovies = moviesDf.drop(moviesDf[maskForRemoveMoviesWatched].index)
-
-  # Hacemos una breve comprobación, viendo si la diferencia entre las peliculas sin y con filtro, es igual al número de peliculas vistas
-  # Debería devolvernos True
-  # print(len(moviesDf) - len(moviesWatchedByUser) == len(candidateMovies))
 
   # Multiplicamos
   # cada uno de los valores de las columnas de peliculas no vistas (candidateMovies)
@@ -95,12 +78,6 @@ def contentBasedRecommender():
   for col in candidateMovies.columns:
     if col == 'movie_id' or col == 'movie_title': continue
     moviesWeight[col] = candidateMovies[col].apply(lambda x: x * userProfile[col].values[0])
-    
-  # Volvemos a comprobar que no ha habido ningún error en cuanto al número de peliculas
-  # Debe devolvernos Ture
-  # print(len(moviesWeight) == len(candidateMovies))
-
-  # Solo queda sumar los valores de peso de cada pelicula
 
   # calcular sumatorio de cada fila
   # El resultado nos dará el orden de prioridad de las peliculas
@@ -112,30 +89,92 @@ def contentBasedRecommender():
   # El formato devuelto será el órden de la pelicula y el nombre de ésta, mostrando el número de peliculas asignado en la función
   moviesWeight = moviesWeight.sort_values(by="recommendedPriority", ascending=False).reset_index(drop=True)
   moviesWeight.index += 1
+
+  if(returnOnlyIdAndScore):
+    return moviesWeight[['movie_id']].head(NUM_PREDICTION_REQUEST)
   
   # Queremos que el primer valor sea el índice de la pelicula, y el segundo valor el título de la pelicula
-  returnMoviesRequest = dict(zip(moviesWeight.index[:NUM_PREDICTION_REQUEST], moviesWeight['movie_title'][:NUM_PREDICTION_REQUEST]))
+  # returnMoviesRequest = dict(zip(moviesWeight.index[:NUM_PREDICTION_REQUEST], moviesWeight['movie_title'][:NUM_PREDICTION_REQUEST]))
 
   #formato del resultado: {ordernPrioridad: 'titulo de pelicula'...}
   # Devolvemos el resultado
   return returnMoviesRequest
 
+def getDataForContentBasedAlgo():
+  # Obtenemos los identificadores de los usuarios, las peliculas y el rating de cada uno
+  usersColumnNames = ['user_id', 'movie_id', 'rating']
+  usersDf = pd.read_csv('./ml-100k/u.data', usecols=[0, 1, 2], sep='\t', names=usersColumnNames)
+
+  # Obtenemos los datos de generos disponibles
+  moviesGenresColumnNames = ['genre_name', 'genre_id']
+  movieGenres = pd.read_csv('./ml-100k/u.genre', usecols=[0], sep='|', names=moviesGenresColumnNames)
+
+  # Obtenemos el nombre de las columnas que tendrá la matriz de peliculas
+  moviesColumnNames = pd.concat([pd.Series(['movie_id', 'movie_title']), movieGenres['genre_name']])
+
+  # Obtenemos los datos de las peliculas
+  # id, title, genders (los generos están en asignados en columnas por el método One Hot encoder, donde cada columna indica si tiene ese género (1) o no (0))
+  moviesDf = pd.read_csv('./ml-100k/u.item', usecols=[0, 1, *range(5, 24)], sep='|', names=moviesColumnNames)
+
+  # Filtramos para recoger solo las que el usuario haya visto
+  userDf = usersDf.query(f'user_id == {USER}')
+
+  # Filtramos las peliculas para obtener solo aquellas que haya visto el usuario asignado
+  moviesWatchedByUser = moviesDf[moviesDf.iloc[:, 0].isin(userDf['movie_id'])]
+
+  return (userDf, movieGenres, moviesDf, moviesWatchedByUser)
+
+def precisionAndRecallOfContentBasedAlgo():
+  userDf, movieGenres, moviesDf, moviesWatchedByUser = getDataForContentBasedAlgo()
+
+  # Obtenemos las peliculas que el usuario ha valorado igual o mayor de 4
+  preferDf = userDf.query(f'user_id == {USER} and rating >= {MIN_RATING_PRECISION}').set_index('movie_id').drop('user_id', axis='columns')
+
+  # Obtenemos 10 peliculas preferidas
+  preferTop10 = preferDf.sort_values(by='rating', ascending=False).head(10)
+
+  preferidos = 0;
+
+  ###################################
+
+  for i in range(NUM_PREDICTION_REQUEST):
+    # Obtener el item que vamos a borrar
+    itemToRemove = preferTop10.iloc[[i]]
+
+    # Actualizamos las peliculas vistas, de manera que le quitamos una de las favoritas para comprobar si en la recomendación, devuelve la pelicula que hemos quitado
+    moviesWatchedByUser = moviesWatchedByUser.drop(moviesWatchedByUser.loc[moviesWatchedByUser['movie_id'] == itemToRemove.index[0]].index)
+
+    # Obtenemos la recomendación
+    recommenderItems = contentBasedAlgorithm(returnOnlyIdAndScore=True, userDf=userDf, moviesDf=moviesDf, moviesWatchedByUser=moviesWatchedByUser, movieGenres=movieGenres)
+
+    # Comprobamos si se encuentra la pelicula favorita, entre las recomendaciones
+    encontrado = itemToRemove.isin(recommenderItems['movie_id']).any().values[0]
+
+    # Si la encuentra, aumentamos en 1 el número de preferidos en las recomendaciones
+    if encontrado:
+      preferidos = preferidos + 1
+
+  print(f'precision = {preferidos/NUM_PREDICTION_REQUEST}')
+  print(f'recall = {preferidos/len(preferDf)}')
+  
+  
+
+
+precisionAndRecallOfContentBasedAlgo()
+
+
+
 def colaborativeFilterRecommender():
-  # Ruta del fichero donde se almacenan los datos requeridos
-  file_path = os.path.expanduser('./ml-100k/u.data')
-
-  # Instancia de la clase Reader para poder cargar los datos de manera que el metodo load_from_file pueda procesarlos
-  reader = Reader(line_format="user item rating timestamp", sep="\t")
-
-  # Almacenamos los datos del fichero como un dataset de surprise
-  data = Dataset.load_from_file(file_path, reader=reader)
+  
+  # Obtenemos el dataset de movielens
+  dataset = getDatasetFromMovielens();
 
   # Dividimos el dataset en dos subconjuntos
   #   trainset: datos de entrenamiento
   #   testset: datos de prueba o testeo
 
   # test_size para indicar que tamaño serán destinados a pruebas
-  trainset, testset = train_test_split(data, test_size=.15)
+  trainset, testset = train_test_split(dataset, test_size=.15)
 
   # KNNWithMeans: Algoritmo para las predicciones basadas en los k-Vecinos más cercanos a un usuario dado
   # ITEM_BASED: Calculo de items cercanos
@@ -155,7 +194,7 @@ def colaborativeFilterRecommender():
   gs = GridSearchCV(KNNWithMeans, param_grid, measures=['RMSE', 'MAE', 'FCP', 'MSE'], cv=3)
 
   # Ajustamos el grid search con los datos
-  gs.fit(data)
+  gs.fit(dataset)
 
   # Recogemos la mejor combinación de hiperparámetros según el RMSE
   bestHyperparameters = gs.best_params['rmse']
@@ -169,11 +208,11 @@ def colaborativeFilterRecommender():
   # Comprobamos obteniendo la predicción de un usuario con una pelicula en concreto
   # Enviandole el id del usuario y del item y la calificación real que el usuario asignó al item, nos devolverá la perdicción estimada por el modelo
   # Verbose sirve para decirle al metodo si queremos que nos muestre el resultado, aunque igualmente podemos almacenar el resultado en una variable y luego mostrarlo
-  # userBasedAlgo.predict(uid=str(USER), iid=str(302), r_ui=4, verbose=True)
+  userBasedAlgo.predict(uid=str(USER), iid=str(302), r_ui=4, verbose=True)
 
   # Realizamos una validacion cruzada para obtener la evaluación del algoritmo
   print('Algorithm evaluation\n-----------------------------')
-  cross_validate(userBasedAlgo, data, measures=['RMSE', 'MAE', 'FCP', 'MSE'], cv=5, verbose=True)
+  cross_validate(userBasedAlgo, dataset, measures=['RMSE', 'MAE', 'FCP', 'MSE'], cv=5, verbose=True)
 
   # Filtramos los items del subcojnunto de entrenamiento, para obtener solo aquellas peliculas que el usuario no valorado
   noRatingByUserSet = trainset.build_anti_testset()
@@ -239,12 +278,36 @@ def colaborativeFilterRecommender():
   # cross_validate(algo, data, measures=['RMSE', 'MAE', 'FCP', 'MSE'], cv=5, verbose=True) <- line: 174
 
 
-USER = 123 # Usuario al que vamos a dirigir la recomendación 
-NUM_PREDICTION_REQUEST = 8 # Número de peliculas que queremos que devuelva la función
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # SISTEMA DE RECOMENDACIÓN BASADO EN CONTENIDO
-print(f'CONTENT BASED RECOMMENDER SYSTEM:\n{contentBasedRecommender()}')
+# print(f'CONTENT BASED RECOMMENDER SYSTEM:\n{contentBasedRecommender()}')
 
 # SISTEMA DE RECOMENDACIÓN BASADO EL FILTRADO COLABORATIVO
-print(f'COLABORATIVE FILTER RECOMMENDER SYSTEM:\n{colaborativeFilterRecommender()}')
+# print(f'COLABORATIVE FILTER RECOMMENDER SYSTEM:\n{colaborativeFilterRecommender()}')
+
 
