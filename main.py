@@ -10,7 +10,7 @@ from surprise.model_selection import train_test_split, cross_validate, GridSearc
 
 USER = 123 # Usuario al que vamos a dirigir la recomendación 
 NUM_PREDICTION_REQUEST = 10 # Número de peliculas que queremos que devuelva la función
-MIN_RATING_PRECISION = 4 # Rating minímo de la recomendación
+MIN_RATING_PRECISION = 3.5 # Rating minímo de la recomendación
 
 def itemIdToName(iid):
   df = pd.read_csv('./ml-100k/u.item', usecols=[0, 1], sep='|', names=['item_id', 'item_title'])
