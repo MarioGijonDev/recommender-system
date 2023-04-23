@@ -280,7 +280,6 @@ def contentBasedRecommender():
 
   print(recommendItems)
 
-
 def precisionAndRecallOfColaborativeFilter(predictions):
   tp = 0  # True positives
   fp = 0  # false positives
@@ -301,8 +300,6 @@ def precisionAndRecallOfColaborativeFilter(predictions):
   print(f'Precisión: {precision}')
   print(f'Recall: {recall}')
   print('-----------------------')
-
-print(colaborativeFilterRecommender())
 
 
 
