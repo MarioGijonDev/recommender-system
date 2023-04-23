@@ -30,6 +30,30 @@ def getDatasetFromMovielens():
   # Devolvemos el dataset
   return data
 
+def getDataForContentBasedAlgo():
+  # Obtenemos los identificadores de los usuarios, las peliculas y el rating de cada uno
+  usersColumnNames = ['user_id', 'movie_id', 'rating']
+  usersDf = pd.read_csv('./ml-100k/u.data', usecols=[0, 1, 2], sep='\t', names=usersColumnNames)
+
+  # Obtenemos los datos de generos disponibles
+  moviesGenresColumnNames = ['genre_name', 'genre_id']
+  movieGenres = pd.read_csv('./ml-100k/u.genre', usecols=[0], sep='|', names=moviesGenresColumnNames)
+
+  # Obtenemos el nombre de las columnas que tendrá la matriz de peliculas
+  moviesColumnNames = pd.concat([pd.Series(['movie_id', 'movie_title']), movieGenres['genre_name']])
+
+  # Obtenemos los datos de las peliculas
+  # id, title, genders (los generos están en asignados en columnas por el método One Hot encoder, donde cada columna indica si tiene ese género (1) o no (0))
+  moviesDf = pd.read_csv('./ml-100k/u.item', usecols=[0, 1, *range(5, 24)], sep='|', names=moviesColumnNames)
+
+  # Filtramos para recoger solo las que el usuario haya visto
+  userDf = usersDf.query(f'user_id == {USER}')
+
+  # Filtramos las peliculas para obtener solo aquellas que haya visto el usuario asignado
+  moviesWatchedByUser = moviesDf[moviesDf.iloc[:, 0].isin(userDf['movie_id'])]
+
+  return (userDf, movieGenres, moviesDf, moviesWatchedByUser)
+
 def contentBasedAlgorithm(returnOnlyIdAndScore = False, userDf= '', moviesDf='', moviesWatchedByUser= '', movieGenres= ''):
 
   # Unimos los dos dataframes según el id de la pelicula
@@ -94,35 +118,11 @@ def contentBasedAlgorithm(returnOnlyIdAndScore = False, userDf= '', moviesDf='',
     return moviesWeight[['movie_id']].head(NUM_PREDICTION_REQUEST)
   
   # Queremos que el primer valor sea el índice de la pelicula, y el segundo valor el título de la pelicula
-  # returnMoviesRequest = dict(zip(moviesWeight.index[:NUM_PREDICTION_REQUEST], moviesWeight['movie_title'][:NUM_PREDICTION_REQUEST]))
+  returnMoviesRequest = dict(zip(moviesWeight.index[:NUM_PREDICTION_REQUEST], moviesWeight['movie_title'][:NUM_PREDICTION_REQUEST]))
 
   #formato del resultado: {ordernPrioridad: 'titulo de pelicula'...}
   # Devolvemos el resultado
   return returnMoviesRequest
-
-def getDataForContentBasedAlgo():
-  # Obtenemos los identificadores de los usuarios, las peliculas y el rating de cada uno
-  usersColumnNames = ['user_id', 'movie_id', 'rating']
-  usersDf = pd.read_csv('./ml-100k/u.data', usecols=[0, 1, 2], sep='\t', names=usersColumnNames)
-
-  # Obtenemos los datos de generos disponibles
-  moviesGenresColumnNames = ['genre_name', 'genre_id']
-  movieGenres = pd.read_csv('./ml-100k/u.genre', usecols=[0], sep='|', names=moviesGenresColumnNames)
-
-  # Obtenemos el nombre de las columnas que tendrá la matriz de peliculas
-  moviesColumnNames = pd.concat([pd.Series(['movie_id', 'movie_title']), movieGenres['genre_name']])
-
-  # Obtenemos los datos de las peliculas
-  # id, title, genders (los generos están en asignados en columnas por el método One Hot encoder, donde cada columna indica si tiene ese género (1) o no (0))
-  moviesDf = pd.read_csv('./ml-100k/u.item', usecols=[0, 1, *range(5, 24)], sep='|', names=moviesColumnNames)
-
-  # Filtramos para recoger solo las que el usuario haya visto
-  userDf = usersDf.query(f'user_id == {USER}')
-
-  # Filtramos las peliculas para obtener solo aquellas que haya visto el usuario asignado
-  moviesWatchedByUser = moviesDf[moviesDf.iloc[:, 0].isin(userDf['movie_id'])]
-
-  return (userDf, movieGenres, moviesDf, moviesWatchedByUser)
 
 def precisionAndRecallOfContentBasedAlgo():
   userDf, movieGenres, moviesDf, moviesWatchedByUser = getDataForContentBasedAlgo()
@@ -152,17 +152,10 @@ def precisionAndRecallOfContentBasedAlgo():
 
     # Si la encuentra, aumentamos en 1 el número de preferidos en las recomendaciones
     if encontrado:
-      preferidos = preferidos + 1
+      preferidos + 1
 
   print(f'precision = {preferidos/NUM_PREDICTION_REQUEST}')
   print(f'recall = {preferidos/len(preferDf)}')
-  
-  
-
-
-precisionAndRecallOfContentBasedAlgo()
-
-
 
 def colaborativeFilterRecommender():
   
@@ -219,6 +212,8 @@ def colaborativeFilterRecommender():
 
   # Obtenemos las predicciones de las valoraciones del conjunto de peliculas no valoradas por el usuario
   predictions = userBasedAlgo.test(noRatingByUserSet)
+
+  precisionAndRecallOfColaborativeFilter(predictions)
 
   # Diccionario que almacenará las valoraciones en forma de listas, inicialmente se encuentra vacío para no ocasionar un KeyError
   predictionDict = defaultdict(list)
@@ -277,12 +272,37 @@ def colaborativeFilterRecommender():
   #   El algoritmo no debe haber sido entrenado
   # cross_validate(algo, data, measures=['RMSE', 'MAE', 'FCP', 'MSE'], cv=5, verbose=True) <- line: 174
 
+def contentBasedRecommender():
+
+  userDf, movieGenres, moviesDf, moviesWatchedByUser = getDataForContentBasedAlgo()
+
+  recommendItems = contentBasedAlgorithm(returnOnlyIdAndScore=False, userDf=userDf, movieGenres=movieGenres, moviesDf=moviesDf, moviesWatchedByUser=moviesWatchedByUser)
+
+  print(recommendItems)
 
 
+def precisionAndRecallOfColaborativeFilter(predictions):
+  tp = 0  # True positives
+  fp = 0  # false positives
+  fn = 0  # false negatives
 
+  for uid, iid, r_ui, est, _ in predictions:
+    if est >= 3.5 and r_ui >= 3.5:
+        tp += 1
+    if est >= 3.5 and r_ui < 3.5:
+        fp += 1
+    if est < 3.5 and r_ui >= 3.5:
+        fn += 1
 
+  precision = tp / (tp + fp)
+  recall = tp / (tp + fn)
 
+  print('PRECISION AND RECALL\n-----------------------')
+  print(f'Precisión: {precision}')
+  print(f'Recall: {recall}')
+  print('-----------------------')
 
+print(colaborativeFilterRecommender())
 
 
 
