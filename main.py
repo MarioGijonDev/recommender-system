@@ -12,6 +12,7 @@ USER = 123 # Usuario al que vamos a dirigir la recomendación
 NUM_PREDICTION_REQUEST = 10 # Número de peliculas que queremos que devuelva la función
 MIN_RATING_PRECISION = 3.5 # Rating minímo de la recomendación
 
+# UTILS
 def itemIdToName(iid):
   df = pd.read_csv('./ml-100k/u.item', usecols=[0, 1], sep='|', names=['item_id', 'item_title'])
   title = df.loc[df['item_id'] == iid, 'item_title'].iloc[0]
@@ -54,6 +55,7 @@ def getDataForContentBasedAlgo():
 
   return (userDf, movieGenres, moviesDf, moviesWatchedByUser)
 
+# CONTENT BASED ALGORITHM
 def contentBasedAlgorithm(returnOnlyIdAndScore = False, userDf= '', moviesDf='', moviesWatchedByUser= '', movieGenres= ''):
 
   # Unimos los dos dataframes según el id de la pelicula
@@ -124,6 +126,7 @@ def contentBasedAlgorithm(returnOnlyIdAndScore = False, userDf= '', moviesDf='',
   # Devolvemos el resultado
   return returnMoviesRequest
 
+# PRECISION AND RECALL
 def precisionAndRecallOfContentBasedAlgo():
   userDf, movieGenres, moviesDf, moviesWatchedByUser = getDataForContentBasedAlgo()
 
@@ -133,10 +136,9 @@ def precisionAndRecallOfContentBasedAlgo():
   # Obtenemos 10 peliculas preferidas
   preferTop10 = preferDf.sort_values(by='rating', ascending=False).head(10)
 
-  preferidos = 0;
+  preferItemsInRecommender = 0;
 
-  ###################################
-
+  # Precision and recall
   for i in range(NUM_PREDICTION_REQUEST):
     # Obtener el item que vamos a borrar
     itemToRemove = preferTop10.iloc[[i]]
@@ -150,14 +152,36 @@ def precisionAndRecallOfContentBasedAlgo():
     # Comprobamos si se encuentra la pelicula favorita, entre las recomendaciones
     encontrado = itemToRemove.isin(recommenderItems['movie_id']).any().values[0]
 
-    # Si la encuentra, aumentamos en 1 el número de preferidos en las recomendaciones
+    # Si la encuentra, aumentamos en 1 el número de preferItemsInRecommender en las recomendaciones
     if encontrado:
-      preferidos + 1
+      preferItemsInRecommender + 1
 
-  print(f'precision = {preferidos/NUM_PREDICTION_REQUEST}')
-  print(f'recall = {preferidos/len(preferDf)}')
+  print(f'precision = {preferItemsInRecommender/NUM_PREDICTION_REQUEST}')
+  print(f'recall = {preferItemsInRecommender/len(preferDf)}')
 
-def colaborativeFilterRecommender():
+def precisionAndRecallOfColaborativeFilter(predictions):
+  tp = 0  # True positives
+  fp = 0  # false positives
+  fn = 0  # false negatives
+
+  for uid, iid, r_ui, est, _ in predictions:
+    if est >= 3.5 and r_ui >= 3.5:
+        tp += 1
+    if est >= 3.5 and r_ui < 3.5:
+        fp += 1
+    if est < 3.5 and r_ui >= 3.5:
+        fn += 1
+
+  precision = tp / (tp + fp)
+  recall = tp / (tp + fn)
+
+  print('PRECISION AND RECALL\n-----------------------')
+  print(f'Precisión: {precision}')
+  print(f'Recall: {recall}')
+  print('-----------------------')
+
+# RECOMMENDER SYSTEMS
+def colaborativeFilterRecommender(precisionAndRecall):
   
   # Obtenemos el dataset de movielens
   dataset = getDatasetFromMovielens();
@@ -213,7 +237,8 @@ def colaborativeFilterRecommender():
   # Obtenemos las predicciones de las valoraciones del conjunto de peliculas no valoradas por el usuario
   predictions = userBasedAlgo.test(noRatingByUserSet)
 
-  precisionAndRecallOfColaborativeFilter(predictions)
+  if precisionAndRecall :
+    precisionAndRecallOfColaborativeFilter(predictions)
 
   # Diccionario que almacenará las valoraciones en forma de listas, inicialmente se encuentra vacío para no ocasionar un KeyError
   predictionDict = defaultdict(list)
@@ -236,7 +261,8 @@ def colaborativeFilterRecommender():
 
 
   # Devolvemos las peliculas
-  return sortedPredictionDict
+  print('\nRecommendations:\n')
+  print(sortedPredictionDict)
 
   #########################
   # EVALUACIÓN DEL MODELO #
@@ -272,59 +298,55 @@ def colaborativeFilterRecommender():
   #   El algoritmo no debe haber sido entrenado
   # cross_validate(algo, data, measures=['RMSE', 'MAE', 'FCP', 'MSE'], cv=5, verbose=True) <- line: 174
 
-def contentBasedRecommender():
+def contentBasedRecommender(precisionAndRecall):
 
   userDf, movieGenres, moviesDf, moviesWatchedByUser = getDataForContentBasedAlgo()
 
   recommendItems = contentBasedAlgorithm(returnOnlyIdAndScore=False, userDf=userDf, movieGenres=movieGenres, moviesDf=moviesDf, moviesWatchedByUser=moviesWatchedByUser)
 
+  if precisionAndRecall :
+    precisionAndRecallOfContentBasedAlgo()
+
+  print('\nRecommendations:\n')
   print(recommendItems)
 
-def precisionAndRecallOfColaborativeFilter(predictions):
-  tp = 0  # True positives
-  fp = 0  # false positives
-  fn = 0  # false negatives
+def main():
+  systemRecommender = str(input('Enter type of recommendation system:\n\n1: Content based\n2: Colaborative filter \n\n> '))
 
-  for uid, iid, r_ui, est, _ in predictions:
-    if est >= 3.5 and r_ui >= 3.5:
-        tp += 1
-    if est >= 3.5 and r_ui < 3.5:
-        fp += 1
-    if est < 3.5 and r_ui >= 3.5:
-        fn += 1
+  print(systemRecommender)
 
-  precision = tp / (tp + fp)
-  recall = tp / (tp + fn)
+  if systemRecommender != '1' and systemRecommender != '2':
+    print('\nInvalid input, only 1 or 2 is allowed\n')
+    return
 
-  print('PRECISION AND RECALL\n-----------------------')
-  print(f'Precisión: {precision}')
-  print(f'Recall: {recall}')
-  print('-----------------------')
+  precisionAndRecall = input('\nWant precision and recall? (y/n)\n> ')
 
+  if precisionAndRecall!= 'y' and precisionAndRecall!= 'n':
+    print('\nInvalid input, only y or n is allowed\n')
+    return
 
+  if systemRecommender == '1':
+    if precisionAndRecall == 'y':
+      contentBasedRecommender(precisionAndRecall=True)
+    else:
+      contentBasedRecommender(precisionAndRecall=False)
+  
+  else:
+    if precisionAndRecall == 'y':
+      colaborativeFilterRecommender(precisionAndRecall=True)
+    else:
+      colaborativeFilterRecommender(precisionAndRecall=False)
 
+  otherTime = input('\nDo you want to run another time? (y/n)\n> ')
+  if otherTime != 'y' and otherTime != 'n':
+    print('\nInvalid input, only y or n is allowed\n')
+    return
+  else:
+    if otherTime == 'y':
+      main()
+    else:
+      print('\nok\n')
+      return
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# SISTEMA DE RECOMENDACIÓN BASADO EN CONTENIDO
-# print(f'CONTENT BASED RECOMMENDER SYSTEM:\n{contentBasedRecommender()}')
-
-# SISTEMA DE RECOMENDACIÓN BASADO EL FILTRADO COLABORATIVO
-# print(f'COLABORATIVE FILTER RECOMMENDER SYSTEM:\n{colaborativeFilterRecommender()}')
-
-
+  
+main()
