@@ -129,24 +129,38 @@ def contentBasedAlgorithm(returnOnlyIdAndScore = False, userDf= '', moviesDf='',
 
 # PRECISION AND RECALL
 def precisionAndRecallOfContentBasedAlgo():
+  # Cogemos los datos necesarios para el uso del algoritmo
   userDf, movieGenres, moviesDf, moviesWatchedByUser = getDataForContentBasedAlgo();
 
-  # dividir el dataframe en conjuntos de entrenamiento y prueba
+  # Dividimos las peliculas vistas por el usuario, en dos sets, uno de entrenamiento y otro de prueba
   train_df, test_df = train_test_split(moviesWatchedByUser, test_size=0.3, train_size=0.7, shuffle=True)
 
-  # Unimos los dos dataframes según el id de la pelicula
+  # Unimos los dataframes del usuario y del test, para recoger las valoraciones de las peliculas en un mismo dataframe
   ratingTestMovies = pd.merge(userDf, test_df, on='movie_id')
 
+  # Descartamos las columnas innecesarias, y nos quedamos solo con el id y el rating de la película
   ratingTestMovies = ratingTestMovies.loc[:, ['movie_id', 'rating']]
 
+  # Obtenemos las top N recomendaciones, usando el set de entrenamiento como punto de partida
+  # De esta manera, descartaremos las peliculas del set de entrenamiento, para que realice la recomendación en el set de prueba
   topNRecommendendations = contentBasedAlgorithm(returnOnlyIdAndScore=True, userDf=userDf, moviesDf=moviesWatchedByUser, moviesWatchedByUser=train_df, movieGenres=movieGenres)
 
+  # Obtenemos las peliculas preferidas del usuario
   prefersMovies = ratingTestMovies.loc[ratingTestMovies['rating'] >= MIN_RATING_PRECISION]
 
+  # Obtenemos las top N peliculas que se encuentran en las peliculas preferidas
   topNInPrefers = pd.merge(topNRecommendendations, prefersMovies, on='movie_id')
 
-  print(f'Numero de pelicuas del top N que son preferidas: {len(topNInPrefers)}')
+  # Precision: Capacidad de que todos recomendados sean preferidos
+  #   = preferidas y recomendadas / recomendadas
+
+  # Recall: Capacidad de que todos los preferidos sean recomendados
+  #   = preferidas y recomendadas / preferidas
+
+  print(f'\nNumero de pelicuas del top {NUM_PREDICTION_REQUEST} que son preferidas: {len(topNInPrefers)}')
   print(f'Numero de peliculas recomendadas: {len(topNRecommendendations)}')
+  print(f'Número de peliculas preferidas: {len(prefersMovies)}')
+
   print(f'Precision: {len(topNInPrefers)/len(topNRecommendendations)}')
   print(f'Recall: {len(topNInPrefers)/len(prefersMovies)}')
 
