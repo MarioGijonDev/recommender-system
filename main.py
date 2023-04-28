@@ -3,14 +3,14 @@ from collections import defaultdict
 import numpy as np
 import pandas as pd
 import os
-from surprise import Dataset, Reader, accuracy, KNNWithMeans, SVD
+from surprise import Dataset, Reader, accuracy, KNNWithMeans
 from surprise.model_selection import train_test_split, cross_validate, GridSearchCV
+from sklearn.model_selection import train_test_split
 
-# La idea es unir en este fichero las tres tareas en tres funciones distintas
 
 USER = 123 # Usuario al que vamos a dirigir la recomendación 
-NUM_PREDICTION_REQUEST = 10 # Número de peliculas que queremos que devuelva la función
-MIN_RATING_PRECISION = 3.5 # Rating minímo de la recomendación
+NUM_PREDICTION_REQUEST = 3 # Número de peliculas que queremos que devuelva la función
+MIN_RATING_PRECISION = 4 # Rating minímo de la recomendación
 
 # UTILS
 def itemIdToName(iid):
@@ -54,6 +54,7 @@ def getDataForContentBasedAlgo():
   moviesWatchedByUser = moviesDf[moviesDf.iloc[:, 0].isin(userDf['movie_id'])]
 
   return (userDf, movieGenres, moviesDf, moviesWatchedByUser)
+
 
 # CONTENT BASED ALGORITHM
 def contentBasedAlgorithm(returnOnlyIdAndScore = False, userDf= '', moviesDf='', moviesWatchedByUser= '', movieGenres= ''):
@@ -126,42 +127,39 @@ def contentBasedAlgorithm(returnOnlyIdAndScore = False, userDf= '', moviesDf='',
   # Devolvemos el resultado
   return returnMoviesRequest
 
+
 # PRECISION AND RECALL
 def precisionAndRecallOfContentBasedAlgo():
-  userDf, movieGenres, moviesDf, moviesWatchedByUser = getDataForContentBasedAlgo()
+  userDf, movieGenres, moviesDf, moviesWatchedByUser = getDataForContentBasedAlgo();
 
-  # Obtenemos las peliculas que el usuario ha valorado igual o mayor de 4
-  preferDf = userDf.query(f'user_id == {USER} and rating >= {MIN_RATING_PRECISION}').set_index('movie_id').drop('user_id', axis='columns')
+  # dividir el dataframe en conjuntos de entrenamiento y prueba
+  train_df, test_df = train_test_split(moviesWatchedByUser, test_size=0.3, train_size=0.7, shuffle=True)
 
-  # Obtenemos 10 peliculas preferidas
-  preferTop10 = preferDf.sort_values(by='rating', ascending=False).head(10)
+  # Unimos los dos dataframes según el id de la pelicula
+  ratingTestMovies = pd.merge(userDf, test_df, on='movie_id')
 
-  preferItemsInRecommender = 0;
+  ratingTestMovies = ratingTestMovies.loc[:, ['movie_id', 'rating']]
 
-  # Precision and recall
-  for i in range(NUM_PREDICTION_REQUEST):
-    # Obtener el item que vamos a borrar
-    itemToRemove = preferTop10.iloc[[i]]
+  topNRecommendendations = contentBasedAlgorithm(returnOnlyIdAndScore=True, userDf=userDf, moviesDf=moviesWatchedByUser, moviesWatchedByUser=train_df, movieGenres=movieGenres)
 
-    # Actualizamos las peliculas vistas, de manera que le quitamos una de las favoritas para comprobar si en la recomendación, devuelve la pelicula que hemos quitado
-    moviesWatchedByUser = moviesWatchedByUser.drop(moviesWatchedByUser.loc[moviesWatchedByUser['movie_id'] == itemToRemove.index[0]].index)
+  prefersMovies = ratingTestMovies.loc[ratingTestMovies['rating'] >= MIN_RATING_PRECISION]
 
-    # Obtenemos la recomendación
-    recommenderItems = contentBasedAlgorithm(returnOnlyIdAndScore=True, userDf=userDf, moviesDf=moviesDf, moviesWatchedByUser=moviesWatchedByUser, movieGenres=movieGenres)
+  topNInPrefers = pd.merge(topNRecommendendations, prefersMovies, on='movie_id')
 
-    # Comprobamos si se encuentra la pelicula favorita, entre las recomendaciones
-    encontrado = itemToRemove.isin(recommenderItems['movie_id']).any().values[0]
-
-    # Si la encuentra, aumentamos en 1 el número de preferItemsInRecommender en las recomendaciones
-    if encontrado:
-      preferItemsInRecommender + 1
-
-  print(f'precision = {preferItemsInRecommender/NUM_PREDICTION_REQUEST}')
-  print(f'recall = {preferItemsInRecommender/len(preferDf)}')
+  print(f'Numero de pelicuas del top N que son preferidas: {len(topNInPrefers)}')
+  print(f'Numero de peliculas recomendadas: {len(topNRecommendendations)}')
+  print(f'Precision: {len(topNInPrefers)/len(topNRecommendendations)}')
+  print(f'Recall: {len(topNInPrefers)/len(prefersMovies)}')
 
 def precisionAndRecallOfColaborativeFilter(predictions):
+
+  # Recomendados - preferidos
   tp = 0  # True positives
+
+  # Recomendados - no preferidos
   fp = 0  # false positives
+
+  # No recomendados - preferidos
   fn = 0  # false negatives
 
   for uid, iid, r_ui, est, _ in predictions:
@@ -172,13 +170,17 @@ def precisionAndRecallOfColaborativeFilter(predictions):
     if est < 3.5 and r_ui >= 3.5:
         fn += 1
 
+  # Capacidad de que todos recomendados sean preferidos
   precision = tp / (tp + fp)
+
+  # Capacidad de que todos los preferidos sean recomendados
   recall = tp / (tp + fn)
 
   print('PRECISION AND RECALL\n-----------------------')
   print(f'Precisión: {precision}')
   print(f'Recall: {recall}')
   print('-----------------------')
+
 
 # RECOMMENDER SYSTEMS
 def colaborativeFilterRecommender(precisionAndRecall):
@@ -310,10 +312,9 @@ def contentBasedRecommender(precisionAndRecall):
   print('\nRecommendations:\n')
   print(recommendItems)
 
+
 def main():
   systemRecommender = str(input('Enter type of recommendation system:\n\n1: Content based\n2: Colaborative filter \n\n> '))
-
-  print(systemRecommender)
 
   if systemRecommender != '1' and systemRecommender != '2':
     print('\nInvalid input, only 1 or 2 is allowed\n')
@@ -347,6 +348,5 @@ def main():
     else:
       print('\nok\n')
       return
-
   
 main()
