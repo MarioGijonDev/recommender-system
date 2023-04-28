@@ -7,7 +7,6 @@ from surprise import Dataset, Reader, accuracy, KNNWithMeans
 from surprise.model_selection import train_test_split, cross_validate, GridSearchCV
 from sklearn.model_selection import train_test_split
 
-
 USER = 123 # Usuario al que vamos a dirigir la recomendación 
 NUM_PREDICTION_REQUEST = 3 # Número de peliculas que queremos que devuelva la función
 MIN_RATING_PRECISION = 4 # Rating minímo de la recomendación
