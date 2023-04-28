@@ -157,9 +157,9 @@ def precisionAndRecallOfContentBasedAlgo():
   # Recall: Capacidad de que todos los preferidos sean recomendados
   #   = preferidas y recomendadas / preferidas
 
-  print(f'\nNumero de pelicuas del top {NUM_PREDICTION_REQUEST} que son preferidas: {len(topNInPrefers)}')
-  print(f'Numero de peliculas recomendadas: {len(topNRecommendendations)}')
-  print(f'Número de peliculas preferidas: {len(prefersMovies)}')
+  print(f'\nNº de pelicuas del top {NUM_PREDICTION_REQUEST} que son preferidas: {len(topNInPrefers)}')
+  print(f'Nº de peliculas recomendadas: {len(topNRecommendendations)}')
+  print(f'Nº de peliculas preferidas: {len(prefersMovies)}')
 
   print(f'Precision: {len(topNInPrefers)/len(topNRecommendendations)}')
   print(f'Recall: {len(topNInPrefers)/len(prefersMovies)}')
